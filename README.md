@@ -11,18 +11,28 @@ npm install vod-hwc-shard-upload
 import { HuaweiVodUploader } from 'vod-hwc-shard-upload';
 
 const uploader = new HuaweiVodUploader({
-  accessKeyId: 'your access key id',
-  accessKeySecret: 'your access key secret',
+  projectId: 'your project id',
+  region: 'your region',
+  category_id: 'your category id',
+  description: 'your description',
+  bufferSize: 1024 * 1024,
+  token: 'your token',
+  fileType: 'your file type',
+  fileContentType: 'your file content type',
 });
 
 uploader.upload({
   file: 'your file path',
-  fileName: 'your file name',
-  fileType: 'your file type',
+  options: {
+    fileType: "MP4",
+    fileContentType: "video/mp4",
+    onProgress: (progress) => {
+      console.log(progress);
+    }
+  }
+}).then((res) => {
+  console.log(res);
+}).catch((err) => {
+  console.log(err);
 });
 ```
-
-## 参数
-
-| 参数 | 类型 | 描述 |
-| --- | --- | --- |
