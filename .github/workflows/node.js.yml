@@ -56,6 +56,9 @@ jobs:
             ./lib/index.umd.js
             ./lib/index.esm.js
             ./lib/index.cjs.js
+            ./lib/index.js
+            ./lib/index.d.ts
+            ./lib/index.min.js
           name: v${{steps.version.outputs.prop}}
           tag_name: v${{steps.version.outputs.prop}}
         env:
