@@ -24,6 +24,18 @@
     "vod",
     "hws-shard"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yoke0104x/vod-hwc-shard-upload.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yoke0104x/vod-hwc-shard-upload/issues"
+  },
+  "files": [
+    "dist"
+  ],
+  "homepage": "https://github.com/yoke0104x/vod-hwc-shard-upload.git",
+  "type": "module",
   "author": "yoke",
   "license": "ISC",
   "devDependencies": {
