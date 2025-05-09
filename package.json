@@ -3,18 +3,12 @@
   "version": "1.0.0",
   "description": "这是用来处理华为云vod视频上传的包",
   "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": {
-        "default": "./dist/index.d.ts"
-      },
-      "browser": {
-        "default": "./dist/index.min.js"
-      },
-      "default": {
-        "import": "./dist/index.esm.js",
-        "require": "./dist/index.js"
-      }
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.esm.js",
+      "require": "./dist/index.js"
     }
   },
   "scripts": {
