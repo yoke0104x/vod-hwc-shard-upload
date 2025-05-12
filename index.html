@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>华为云VOD上传示例</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js"></script>
+    <script type="module">
+        import { HuaweiVodUploader } from './dist/index.min.js';
+        // 确保 DOM 和函数都已加载再绑定
+        window.addEventListener('DOMContentLoaded', () => {
+            document.getElementById("start-btn").addEventListener("click", startUpload);
+            document.getElementById("pause-btn").addEventListener("click", pauseUpload);
+            document.getElementById("resume-btn").addEventListener("click", resumeUpload);
+            document.getElementById("stop-btn").addEventListener("click", stopUpload);
+        });
+
+        const res = await axios.get('http://124.71.238.103:16808/zeroCarbon/opt/tech/get/vod/token', {})
+        // 创建全局上传器实例
+        const uploader = new HuaweiVodUploader({
+            bufferSize: 1024 * 1024, // 1MB分片
+            category_id: '196010',
+            description: '测试描述',
+            projectId: '0c5375b69b8010de2f1cc016ae1ee655',
+            region: 'cn-north-4',
+            token: res.data.data
+        });
+
+        // 开始上传
+        window.startUpload = function () {
+            const fileInput = document.getElementById("file");
+            const progressBar = document.getElementById("progress-bar");
+            const progressText = document.getElementById("progress-text");
+            const statusText = document.getElementById("status-text");
+
+            // 更新按钮状态
+            updateButtonState('uploading');
+
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('请选择文件');
+                updateButtonState('idle');
+                return;
+            }
+
+            // 开始上传
+            uploader.upload(
+                file,
+                {
+                    fileType: "MP4",
+                    fileContentType: "video/mp4",
+                    onProgress: (progress) => {
+                        progressBar.value = progress.percent;
+                        progressText.innerText = `上传进度: ${progress.percent}%`;
+                    },
+                },
+            ).then((result) => {
+                statusText.innerText = "上传状态: 已完成";
+                updateButtonState('completed');
+                console.log('上传结果:', result);
+            }).catch((error) => {
+                statusText.innerText = "上传状态: 错误 - " + error.message;
+                updateButtonState('error');
+                console.error('上传错误:', error);
+            });
+        };
+
+        // 暂停上传
+        window.pauseUpload = function () {
+            if (uploader.pauseUpload()) {
+                document.getElementById("status-text").innerText = "上传状态: 已暂停";
+                updateButtonState('paused');
+            }
+        };
+
+        // 恢复上传
+        window.resumeUpload = function () {
+            const progressBar = document.getElementById("progress-bar");
+            const progressText = document.getElementById("progress-text");
+            const statusText = document.getElementById("status-text");
+
+            if (uploader.resumeUpload(
+                // 进度回调
+                (progress) => {
+                    progressBar.value = progress.percent;
+                    progressText.innerText = `上传进度: ${progress.percent}%`;
+                },
+                // 成功回调
+                (result) => {
+                    statusText.innerText = "上传状态: 已完成";
+                    updateButtonState('completed');
+                    console.log('上传结果:', result);
+                },
+                // 错误回调
+                (error) => {
+                    statusText.innerText = "上传状态: 错误 - " + error.message;
+                    updateButtonState('error');
+                    console.error('上传错误:', error);
+                }
+            )) {
+                statusText.innerText = "上传状态: 正在上传";
+                updateButtonState('uploading');
+            }
+        };
+
+        // 停止上传
+        window.stopUpload = function () {
+            if (uploader.stopUpload()) {
+                document.getElementById("status-text").innerText = "上传状态: 已停止";
+                document.getElementById("progress-bar").value = 0;
+                document.getElementById("progress-text").innerText = "上传进度: 0%";
+                updateButtonState('stopped');
+            }
+        };
+
+        // 更新按钮状态
+        window.updateButtonState = function (state) {
+
+        };
+    </script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        input[type="text"],
+        input[type="file"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            min-width: 80px;
+        }
+
+        button:hover:not([disabled]) {
+            background-color: #45a049;
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        .btn-pause {
+            background-color: #f39c12;
+        }
+
+        .btn-resume {
+            background-color: #3498db;
+        }
+
+        .btn-stop {
+            background-color: #e74c3c;
+        }
+
+        .button-group {
+            display: flex;
+            margin-bottom: 20px;
+        }
+
+        progress {
+            width: 100%;
+            height: 20px;
+            margin-top: 10px;
+        }
+
+        .status {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>华为云VOD上传示例</h1>
+
+    <div class="form-group">
+        <label for="file">选择文件:</label>
+        <input type="file" id="file" accept="video/*">
+    </div>
+
+    <div class="button-group">
+        <button id="start-btn">开始上传</button>
+        <button id="pause-btn" class="btn-pause">暂停</button>
+        <button id="resume-btn" class="btn-resume">继续</button>
+        <button id="stop-btn" class="btn-stop">停止</button>
+    </div>
+
+    <div class="progress-container">
+        <progress id="progress-bar" value="0" max="100"></progress>
+        <div id="progress-text">上传进度: 0%</div>
+        <div id="status-text" class="status">上传状态: 未开始</div>
+    </div>
+</body>
+
+</html>
