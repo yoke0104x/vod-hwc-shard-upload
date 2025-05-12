@@ -1,6 +1,6 @@
 {
   "name": "vod-hwc-shard-upload",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "这是用来处理华为云vod视频上传的包",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

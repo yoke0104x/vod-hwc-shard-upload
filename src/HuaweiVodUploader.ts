@@ -14,6 +14,7 @@ export interface UploaderOptions {
   fileType?: string;
   fileContentType?: string;
   onProgress?: (progress: ProgressInfo) => void;
+  debugger?: boolean;
 }
 
 // 定义进度回调接口
@@ -53,6 +54,7 @@ class HuaweiVodUploader {
   private bufferSize: number;
   private urlList: Record<string, string>;
   private Uploading: boolean = false;
+  private debugger: boolean = false;
   
   // 上传控制状态
   public readonly uploadStatus = {
@@ -87,6 +89,7 @@ class HuaweiVodUploader {
     this.region = options.region || this.region;
     this.bufferSize = options.bufferSize || 1024 * 1024 * 100; // 默认100MB
     this.token = options.token || '';
+    this.debugger = options.debugger || false;
     this.urlList = this.initUrl();
   }
 
@@ -116,16 +119,19 @@ class HuaweiVodUploader {
     options: UploaderOptions = {},
   ): Promise<any> {
     this.Uploading = true;
+    this.debugger = options.debugger || this.debugger;
+
+    this.debugLog('开始上传文件', { fileName: file.name, fileSize: file.size, options });
 
     return new Promise(async (resolve, reject) => {
       if (!this.Uploading) {
-        console.warn('已有上传任务正在进行中');
+        this.debugLog('上传被拒绝: 已有上传任务正在进行中');
         return;
       }
 
       // 如果正在上传或已完成，则不执行
       if (this.currentStatus === this.uploadStatus.UPLOADING) {
-        console.warn('已有上传任务正在进行中');
+        this.debugLog('上传被拒绝: 已有上传任务正在进行中');
         return;
       }
 
@@ -135,6 +141,7 @@ class HuaweiVodUploader {
       const onProgress = options?.onProgress;
 
       if (!this.token) {
+        this.debugLog('上传失败: 获取token失败');
         this.currentStatus = this.uploadStatus.ERROR;
         reject(new Error('获取token失败'));
         return;
@@ -150,16 +157,22 @@ class HuaweiVodUploader {
           'X-Auth-Token': this.token,
           'Content-Type': 'application/json'
         };
-        console.log(this.token);
+        this.debugLog('设置请求头', headers);
 
         // 2. 创建点播媒资
+        this.debugLog('开始创建点播媒资', { title: file.name, videoName: file.name, fileType });
         const assetRsp = await this.createAsset(file.name, file.name, fileType, headers);
+        this.debugLog('创建点播媒资成功', assetRsp);
 
         // 3. 获取初始化上传任务授权
+        this.debugLog('获取初始化上传任务授权', { assetRsp, fileContentType });
         const initAuthResponse = await this.getInitAuth(assetRsp, fileContentType, headers);
+        this.debugLog('获取初始化上传任务授权成功', initAuthResponse);
 
         // 4. 初始化分段上传任务
+        this.debugLog('初始化分段上传任务', { initAuthResponse, assetRsp, fileContentType });
         const uploadId = await this.initPartUpload(initAuthResponse, assetRsp, fileContentType);
+        this.debugLog('初始化分段上传任务成功', { uploadId });
 
         // 保存上传信息，用于暂停后继续
         this.uploadInfo = {
@@ -173,32 +186,43 @@ class HuaweiVodUploader {
           totalChunks: Math.ceil(file.size / this.bufferSize),
           uploadedSize: 0
         };
+        this.debugLog('保存上传信息', this.uploadInfo);
 
         // 5-6. 上传文件分段
+        this.debugLog('开始上传文件分段');
         const partInfo = await this.uploadParts(onProgress);
+        this.debugLog('上传文件分段完成', partInfo);
 
         // 如果上传被停止，直接返回
         if (this.currentStatus === this.uploadStatus.STOPPED) {
+          this.debugLog('上传被停止');
           this.uploadInfo = null;
           return;
         }
 
         // 如果上传被暂停，等待恢复后继续
         if (this.currentStatus === this.uploadStatus.PAUSED) {
+          this.debugLog('上传被暂停');
           return;
         }
 
         // 7-11. 完成上传
+        this.debugLog('开始完成上传', { assetRsp, uploadId, partInfo });
         await this.completeUpload(assetRsp, uploadId, partInfo, headers);
+        this.debugLog('完成上传成功');
 
         // 12. 确认上传
+        this.debugLog('开始确认上传', { assetId: assetRsp.asset_id });
         await this.confirmUploaded(assetRsp.asset_id, headers);
+        this.debugLog('确认上传成功');
 
         this.currentStatus = this.uploadStatus.COMPLETED;
         this.uploadInfo = null;
+        this.debugLog('上传全部完成', assetRsp);
 
         resolve(assetRsp);
       } catch (error) {
+        this.debugLog('上传过程中发生错误', error);
         this.currentStatus = this.uploadStatus.ERROR;
         reject(error);
       }
@@ -211,12 +235,20 @@ class HuaweiVodUploader {
    */
   public pauseUpload(): boolean {
     if (this.currentStatus !== this.uploadStatus.UPLOADING) {
-      console.warn('没有正在进行的上传任务');
+      this.debugLog('暂停上传失败: 没有正在进行的上传任务');
       return false;
     }
 
     this.currentStatus = this.uploadStatus.PAUSED;
     this.Uploading = false;
+    this.debugLog('上传已暂停', { 
+      currentStatus: this.currentStatus, 
+      uploadInfo: this.uploadInfo ? {
+        nextPartNumber: this.uploadInfo.nextPartNumber,
+        uploadedSize: this.uploadInfo.uploadedSize,
+        totalChunks: this.uploadInfo.totalChunks
+      } : null
+    });
     return true;
   }
 
@@ -227,16 +259,24 @@ class HuaweiVodUploader {
    * @param onError 错误回调函数
    * @returns 是否成功恢复
    */
-  public resumeUpload(
+  public async resumeUpload(
     onProgress?: (progress: ProgressInfo) => void,
-  ): boolean {
+  ): Promise<boolean> {
     if (this.currentStatus !== this.uploadStatus.PAUSED) {
-      console.warn('没有可恢复的上传任务');
+      this.debugLog('恢复上传失败: 没有可恢复的上传任务');
       return false;
     }
 
     this.currentStatus = this.uploadStatus.UPLOADING;
     this.Uploading = true;
+    this.debugLog('上传已恢复', { 
+      currentStatus: this.currentStatus, 
+      uploadInfo: this.uploadInfo ? {
+        nextPartNumber: this.uploadInfo.nextPartNumber,
+        uploadedSize: this.uploadInfo.uploadedSize,
+        totalChunks: this.uploadInfo.totalChunks
+      } : null
+    });
     return true;
   }
 
@@ -247,7 +287,7 @@ class HuaweiVodUploader {
   public stopUpload(): boolean {
     if (this.currentStatus !== this.uploadStatus.UPLOADING && 
         this.currentStatus !== this.uploadStatus.PAUSED) {
-      console.warn('没有可停止的上传任务');
+      this.debugLog('停止上传失败: 没有可停止的上传任务');
       return false;
     }
 
@@ -266,6 +306,7 @@ class HuaweiVodUploader {
     this.uploadInfo = null;
     this.onStopCallback = null;
     this.Uploading = false;
+    this.debugLog('上传已停止');
     return true;
   }
 
@@ -411,7 +452,15 @@ class HuaweiVodUploader {
     content: Blob,
     onUploadProgress?: (percent: number) => void
   ): Promise<void> {
-    console.log(uploadAuth, assetRsp, contentMd5, partNumber, uploadId, content);
+    this.debugLog(`开始上传第${partNumber}段`, { 
+      uploadAuth, 
+      assetRsp, 
+      contentMd5, 
+      partNumber, 
+      uploadId, 
+      contentSize: content.size 
+    });
+    
     const url = `https://${assetRsp.target.bucket}.obs.${this.region}.myhuaweicloud.com/${assetRsp.target.object}?partNumber=${partNumber}&uploadId=${uploadId}&${uploadAuth.sign_str}`;
 
     const headers = {
@@ -424,10 +473,14 @@ class HuaweiVodUploader {
       headers, 
       onUploadProgress: (progress) => {
         if (onUploadProgress && progress.total) {
-          onUploadProgress(Math.round((progress.loaded / content.size) * 100));
+          const percent = Math.round((progress.loaded / content.size) * 100);
+          this.debugLog(`第${partNumber}段上传进度: ${percent}%`, { loaded: progress.loaded, total: content.size });
+          onUploadProgress(percent);
         }
       }
     });
+    
+    this.debugLog(`第${partNumber}段上传完成`);
   }
 
   /**
@@ -486,7 +539,7 @@ class HuaweiVodUploader {
 
       // 上传分段
       await this.uploadPartFile(uploadAuth, assetRsp, contentMd5, partNum, uploadId, chunk, (value) => {
-        console.log(this.currentProgress, Math.floor(value / totalChunks), '.......');
+        this.debugLog(`第${partNum}段上传进度: ${value}%`, { loaded: end, total: file.size, percent: this.currentProgress + Math.floor(value / totalChunks) });
         if (onProgress) {
           onProgress({
             loaded: end,
@@ -648,7 +701,6 @@ class HuaweiVodUploader {
     const parser = new DOMParser();
     const xmlDoc = parser.parseFromString(response.data, 'text/xml');
     const parts = xmlDoc.getElementsByTagName('Part');
-    console.log(parts, '.......');
     
     for (let i = 0; i < parts.length; i++) {
       const ele = parts[i];
@@ -774,6 +826,17 @@ class HuaweiVodUploader {
 
     const response = await axios.post(this.urlList.confirmUploadedUrl, body, { headers });
     return response.data;
+  }
+
+  // 增加一个内部打印方法，在debugger为true时打印醒目的日志
+  private debugLog(message: string, data?: any) {
+    if (this.debugger) {
+      console.log('\n%c[华为云VOD上传器] ' + message, 'background: #ff0000; color: #ffffff; font-weight: bold; padding: 2px 5px; border-radius: 3px;');
+      if (data) {
+        console.log('%c数据:', 'color: #ff9900; font-weight: bold;', data);
+      }
+      console.log('\n');
+    }
   }
 }
 
